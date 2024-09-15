@@ -12,11 +12,8 @@ using UnityEngine.UIElements;
 
 public class Context_generate : MonoBehaviour
 {
-    #if UNITY_EDITOR
-        private string context_config_path="Assets/Resources/linear_track/config.ini";
-    #else
-        private string context_config_path;
-    #endif
+    
+    public string context_config_path;
     public GameObject prefabRewardZone;
     public GameObject prefabTunnel;
     public GameObject landmarkDefault;
@@ -173,6 +170,16 @@ public class Context_generate : MonoBehaviour
             return gameObjectMissing;
         }
     }
+
+    public string GetConfigPath(){
+        #if UNITY_EDITOR
+            context_config_path="Assets/Resources/linear_track/config.ini";
+        #else
+            context_config_path=Application.dataPath+"/Resources/config.ini";
+            if(!System.IO.Directory.Exists(Application.dataPath+"/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/Sprites");}
+        #endif
+        return context_config_path;
+    }
     
     void Awake()
     {
@@ -182,12 +189,8 @@ public class Context_generate : MonoBehaviour
             Display.displays[i].Activate();
             Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
         }
-
-        #if !UNITY_EDITOR
-            context_config_path=Application.dataPath+"/Resources/config.ini";
-            if(!System.IO.Directory.Exists(Application.dataPath+"/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/Sprites");}
-        #endif
-        ini_Reader=new Ini_reader(context_config_path);
+         
+        ini_Reader=new Ini_reader(GetConfigPath());
         position_control = player.GetComponent<Position_control>();
         ui_update = player.GetComponent<UI_update>();
         //TextAsset txt = Resources.Load(context_config) as TextAsset;

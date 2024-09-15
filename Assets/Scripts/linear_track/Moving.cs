@@ -359,6 +359,14 @@ public class Moving : MonoBehaviour
         return "delta time\tmode\ttrial\tcontext\trelative pos\traw data\tspeed\tlick before-\tlick in-\t lick after rewardzone\tlick_count_correct\twater served";
     }
 
+    void Quit(){
+        #if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+        #else
+            Application.Quit();
+        #endif
+    }
+
     void Awake(){
         sensorSmooth = sensor_smooth_interval;// = 0时结算一次
         rollingTimer = new float[] {Time.unscaledTime, Time.unscaledTime, Time.unscaledTime, Time.unscaledTime};
@@ -376,24 +384,34 @@ public class Moving : MonoBehaviour
         for(int i = 0; i<Arduino_var_list.Count; i++){
             Arduino_var_map.Add(Arduino_var_list[i], i.ToString());
         }
+        Ini_reader iniReader = new Ini_reader(GetComponent<Context_generate>().GetConfigPath());
+
+        List<string> portBlackList = new List<string>();
+        foreach(string com in iniReader.ReadIniContent("serialSettings", "blackList", "").Split(",")){
+            if(!portBlackList.Contains(com)){portBlackList.Add(com);}
+        }
         foreach(string port in ScanPorts_API()){
-            if(port.Contains("COM") && !port_black_list.Contains(port)){
+            if(port.Contains("COM") && !portBlackList.Contains(port)){
                 try{
                     //Debug.Log(sp.IsOpen);
                     //if (!sp.IsOpen){
                         Debug.Log("try normal");
                         sp = new SerialPort(port, 115200, Parity.None, 8, StopBits.One);
+                        sp.RtsEnable = true;
+                        sp.DtrEnable = true;
                         sp.Open();
                         Debug.Log("COM avaible: "+port);
 
                         sp.ReadTimeout = 1000;
                         while(true){
                             string temp_readline=sp.ReadLine();
-                            Debug.Log(temp_readline);
+                            //Debug.Log(temp_readline);
                             if(temp_readline=="initialed"){
                                 break;
                             }
-                            else{continue;}
+                            else{
+                                continue;
+                            }
                         }
                     //}
                 }
@@ -403,11 +421,11 @@ public class Moving : MonoBehaviour
                     ui_update.MessageUpdate(e.Message+"\n");
                     sp.Close();
                     if(e.Message.Contains("拒绝访问")){
-                        #if UNITY_EDITOR
-                            UnityEditor.EditorApplication.isPlaying = false;
-                        #else
-                            Application.Quit();
-                        #endif
+                        MessageBoxForUnity.Ensure("Accssion Denied", "Serial Error");
+                        Quit();
+                    }else{
+                        MessageBoxForUnity.Ensure("Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator", "Serial Error");
+                        Quit();
                     }
                 }
                 finally{
@@ -423,6 +441,9 @@ public class Moving : MonoBehaviour
             InitializeStreamWriter();
             string data_write = WriteInfo(write: false);
             writeQueue.Enqueue(data_write);
+        }else{
+            MessageBoxForUnity.Ensure("No Connection to Arduino!", "Serial Error");
+            Quit();
         }
     }
 
