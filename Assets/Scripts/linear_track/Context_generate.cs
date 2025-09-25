@@ -111,7 +111,7 @@ public class Context_generate : MonoBehaviour
                 GameObject temp_go=tunnel_tf.GetChild(i).gameObject;
                 if (temp_go.name.Contains("left") || temp_go.name.Contains("right")){
                     Material instanceMaterial = new Material(wallpaper);
-                    instanceMaterial.mainTextureScale = new Vector2(1, generate_length);
+                    instanceMaterial.mainTextureScale = new Vector2(1, generate_length+1);
                     temp_go.GetComponent<Renderer>().material = instanceMaterial;
                 }
             }

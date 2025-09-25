@@ -9,12 +9,12 @@ using UnityEngine;
 
 public class Position_control : MonoBehaviour
 {
-    public GameObject prefab_quad;
+    // public GameObject prefab_quad;
     public int[] contextZoneStartAndEnd;//start_pos, end_pos, start_pos, end_pos...
     public int[] rewardZoneStartAndEnd;//reward_pos, end_pos, reward_pos, end_pos...
     public List<Context_info> context_info_ls = new List<Context_info>();
     public bool now_context_success;
-    private int now_trial=1; public int Now_trial{get{return now_trial;}}
+    int now_trial=1; public int Now_trial{get{return now_trial;}}
     public int trial_per_section=0;
     public int serve_water_mode=0;
     public int lick_count_correct=0;
@@ -58,33 +58,33 @@ public class Position_control : MonoBehaviour
     }
     //public Dictionary<int, Context_end> dic_context_end=new Dictionary<string, Context_end>();
     
-    private float X {get{ return transform.position.x;}set{ transform.position = new Vector3(value, transform.position.y, transform.position.z);}}
+    float X {get{ return transform.position.x;}set{ transform.position = new Vector3(value, transform.position.y, transform.position.z);}}
     public float RelativeX {get{ return X- contextZoneStartAndEnd[now_context*2];}}
-    private int now_context=0;
+    int now_context=0;
     public int NowContext{get{return now_context;}}
-    private bool context_available=false;
-    private bool trial_syncing=false;   public bool Trial_syncing{get{return trial_syncing;}}
-    private float counter=-999f;//context结束计时
-    private int waiting=-1;//0:false, 1:true, 2:waiting for sync, -1:inital sync
-    private float pre_pos=-1f;
-    private float[] lengthRec = new float[]{-1, 0, 0};//{indicator, begin<可正可负>, length passed}
+    bool context_available=false;
+    bool trial_syncing=false;   public bool Trial_syncing{get{return trial_syncing;}}
+    float counter=-999f;//context结束计时
+    int waiting=-1;//0:false, 1:true, 2:waiting for sync, -1:inital sync
+    float pre_pos=-1f;
+    float[] lengthRec = new float[]{-1, 0, 0};//{indicator, begin<可正可负>, length passed}
     public bool LengthRecClear  {set{ if(value){lengthRec = new float[]{-1, 0, 0}; LengthRecClear = false;}}}
-    private Transform tf;
-    private Rigidbody m_rb;
-    private Moving moving;
-    private UI_update ui_update;
-    private GameObject temp_quad;
-    private Dictionary<string, float> dicWaterServingSpdVariables = new Dictionary<string, float>(){
+    Transform tf;
+    Rigidbody m_rb;
+    Moving moving;
+    UI_update ui_update;
+    public GameObject fullScreenColor;
+    Dictionary<string, float> dicWaterServingSpdVariables = new Dictionary<string, float>(){
         {"speed_threshold", 0.2f}, {"lasting_time_threshold", 0.4f}, {"running_time_threshold", 2}, {"time_serve_interval", 2}, {"time_serve_interval_when_runing", 1}, {"time_run_begin", 0}, {"time_served", 0}, {"random_delayed", 0}
     };   
-    private Dictionary<string, float> dicWaterServingLengthVariables = new Dictionary<string, float>(){
+    Dictionary<string, float> dicWaterServingLengthVariables = new Dictionary<string, float>(){
         {"length_threshold", 1f}, {"running_threshold", 10f}, {"time_serve_interval", 2}, {"time_serve_interval_when_runing", 1}, {"time_served", 0}, {"random_delayed", 0}
     };    
     public float dic_water_serving_speed_threshold{set{dicWaterServingSpdVariables["speed_threshold"]=value;}}
     public float dic_water_serving_runbegin{set{dicWaterServingSpdVariables["time_run_begin"]=value;}}
-    private Vector3 rec_pos;
+    Vector3 rec_pos;
 
-    //private void Trial_args_init(int now_context, bool update=true ,bool init_all=false){
+    //void Trial_args_init(int now_context, bool update=true ,bool init_all=false){
     public void Trial_args_init(bool update=true ,bool init_all=false){//清理位置信息，更新位置以及context相关参数
         if(update){
             if(now_context==context_info_ls.Count-1){now_trial++;}
@@ -110,7 +110,7 @@ public class Position_control : MonoBehaviour
         }
     }
 
-    private int Trial_context_sync(int context_id){
+    int Trial_context_sync(int context_id){
         //"p_enter_reward_context, p_in_reward_context, p_lick_time_accu, p_lick_count, p_start_water, p_lick_mode, p_trial, p_lick_count_max, p_lick_mode0_delay, p_lick_mode1_delay"
         trial_syncing=true;
         lick_count_max=context_info_ls[context_id].lick_count_max;
@@ -127,7 +127,7 @@ public class Position_control : MonoBehaviour
             int sync_max_time=100;
             while(sync_result!=1 && sync_max_time>0){
                 sync_result = moving.Context_verify(variables, values);
-                if(sync_result!=1){
+                if(sync_result!=1 && sync_result != -3){
                     Debug.LogError("context info sync failed");
                 }
                 else{break;}
@@ -138,7 +138,7 @@ public class Position_control : MonoBehaviour
         variables.Clear();
         values.Clear();
 
-        if(sync_result!=1){
+        if(sync_result!=1 && sync_result != -3){
             Debug.LogError("context info sync failed");
             trial_syncing=false; 
             return -1;
@@ -248,7 +248,7 @@ public class Position_control : MonoBehaviour
         }
     }
 
-    private void ServeWaterSpeedDepend(float spd, int random_delay_sec=0, bool IsInRewardZone=true, bool RewardZoneNeeded=false){//random_delay_sec: 延迟随机x秒后给水
+    void ServeWaterSpeedDepend(float spd, int random_delay_sec=0, bool IsInRewardZone=true, bool RewardZoneNeeded=false){//random_delay_sec: 延迟随机x秒后给水
         //speed_threshold, lasting_time_threshold,      running_time_threshold,             time_serve_interval,        time_serve_interval_when_runing, time_run_begin, time_served
         //                  ↖短暂跑动的最低时间要求，约0.5s?     ↖判定持续跑动的最低时间要求，约2s?      ↖间断跑给水均服从第一个间隔  ↖持续跑给水均服从第二个间隔   
         if(spd>dicWaterServingSpdVariables["speed_threshold"]){//在跑了
@@ -293,7 +293,7 @@ public class Position_control : MonoBehaviour
         }
     }
 
-    private void ServeWaterLengthDepend(float length, int random_delay_sec=0, bool IsInRewardZone=true, bool RewardZoneNeeded=false){//random_delay_sec: 延迟随机x秒后给水
+    void ServeWaterLengthDepend(float length, int random_delay_sec=0, bool IsInRewardZone=true, bool RewardZoneNeeded=false){//random_delay_sec: 延迟随机x秒后给水
         //speed_threshold, lasting_time_threshold,      running_time_threshold,             time_serve_interval,        time_serve_interval_when_runing, time_run_begin, time_served
         //                  ↖短暂跑动的最低时间要求，约0.5s?     ↖判定持续跑动的最低时间要求，约2s?      ↖间断跑给水均服从第一个间隔  ↖持续跑给水均服从第二个间隔   
         if(length>dicWaterServingLengthVariables["length_threshold"]){//在跑了
@@ -330,7 +330,16 @@ public class Position_control : MonoBehaviour
         }
     }
 
-    //private Transform tf_self;
+    void ActivateFullSCreenColor(Color color){
+        fullScreenColor.SetActive(true);
+        fullScreenColor.GetComponent<Camera>().backgroundColor = color;
+    }
+
+    void DeactivateFillScreenColor(){
+        fullScreenColor.SetActive(false);
+    }
+
+    //Transform tf_self;
     // Start is called before the first frame update
     void Awake() {
         m_rb = GetComponent<Rigidbody>();
@@ -338,10 +347,10 @@ public class Position_control : MonoBehaviour
         moving = GetComponent<Moving>();
         ui_update = GetComponent<UI_update>();
         rec_pos = new Vector3(X, transform.position.y, transform.position.z);
-
-        temp_quad=Instantiate(prefab_quad, new Vector3(X-0.4f, 0, 0), prefab_quad.transform.rotation);
-        temp_quad.GetComponent<FullscreenColorQuad>().obj_main = gameObject;
-        temp_quad.SetActive(false);
+        DeactivateFillScreenColor();
+        // fullScreenColor=Instantiate(prefab_quad, new Vector3(X-0.4f, 0, 0), prefab_quad.transform.rotation);
+        // fullScreenColor.GetComponent<FullscreenColorQuad>().obj_main = gameObject;
+        // fullScreenColor.SetActive(false);
     }
 
     void Start()
@@ -379,7 +388,8 @@ public class Position_control : MonoBehaviour
             if(waiting==1 && Time.unscaledTime-counter>context_info_ls[now_context].wait_sec){//已同步完成，正常进入下一context
                 waiting = 0;
                 counter = 0;
-                temp_quad.SetActive(false);
+                DeactivateFillScreenColor();
+                // fullScreenColor.SetActive(false);
                 //Destroy(temp_quad);
                 pre_pos=tf.position[0];
                 moving.ContinueMoving();
@@ -392,7 +402,9 @@ public class Position_control : MonoBehaviour
 
                 if(now_trial>trial_per_section){
                     counter = Time.unscaledTime+10000;
-                    temp_quad.GetComponent<FullscreenColorQuad>().quadColor = Color.green;
+                    ActivateFullSCreenColor(Color.green);
+                    DeactivateFillScreenColor();
+                    // fullScreenColor.GetComponent<FullscreenColorQuad>().quadColor = Color.green;
                     waiting = 1;
                         //pause or do something
                 }
@@ -425,9 +437,10 @@ public class Position_control : MonoBehaviour
                     if(context_info_ls[now_context].wait_sec>0){
                         now_context_success=lick_count_rec[1]>=lick_count_succes_threshold[0] && lick_count_rec[1]<=lick_count_succes_threshold[1];
                         //temp_quad=Instantiate(prefab_quad, new Vector3(x, 0, 0), prefab_quad.transform.rotation);
-                        temp_quad.SetActive(true);
-                        //temp_quad.transform.position=new Vector3(x, 0, 0);
-                        temp_quad.GetComponent<FullscreenColorQuad>().quadColor=now_context_success? context_info_ls[now_context].succes_color: context_info_ls[now_context].fail_color;
+                        ActivateFullSCreenColor(now_context_success? context_info_ls[now_context].succes_color: context_info_ls[now_context].fail_color);
+                        // fullScreenColor.SetActive(true);
+                        // //temp_quad.transform.position=new Vector3(x, 0, 0);
+                        // fullScreenColor.GetComponent<FullscreenColorQuad>().quadColor=now_context_success? context_info_ls[now_context].succes_color: context_info_ls[now_context].fail_color;
                     }
                     ui_update.MessageUpdate($"now trial: {now_trial}, now_context: {now_context}, lick status: correct:{lick_count_correct}, rec: before {lick_count_rec[0]} in {lick_count_rec[1]} after {lick_count_rec[2]}\n");
                     Trial_args_init();//所有参数更新为下一个context，并开始等待

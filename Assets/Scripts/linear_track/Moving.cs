@@ -12,6 +12,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
 using Unity.Collections.LowLevel.Unsafe;
+using UnityEngine.UIElements;
 //using UnityEditor.PackageManager;
 
 public class Moving : MonoBehaviour
@@ -32,43 +33,48 @@ public class Moving : MonoBehaviour
     //public float roll_timer_interval = 0.1f;
     public Rigidbody m_rb;
     public LineChartMultiChannel lineChart; 
+    Position_control position_control;
+    Command_Converter command_Converter;
+
+    UI_update ui_update;
+    public Context_generate context_Generate;
+    //int sensor_now;
+    int sensorSmooth = 0;
+    //int sensor_smooth_silence = 0;
+    float[] rollingTimer;//{sensor_stop, now}
+    int[] rollingData;
+    int[,] rollingDataSmooth;
+    int[] thresholds;
+    //--------------------------------------Serial-----------------------------------------------
+    bool DebugWithoutArduino = false;
+    SerialPort sp = null;   public SerialPort SP { get { return sp; } }
+    List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
     public string[] port_black_list = new string[]{};
-    private Position_control position_control;
-    private Command_Converter command_Converter;
-    private UI_update ui_update;
-    private SerialPort sp = null;
-    //private int sensor_now;
-    private int sensorSmooth = 0;
-    //private int sensor_smooth_silence = 0;
-    private float[] rollingTimer;//{sensor_stop, now}
-    private int[] rollingData;
-    private int[,] rollingDataSmooth;
-    private int[] thresholds;
-    private List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
-    private int serialReadContentLsMark = -1;
-    private readonly object lockObjectMovement = new object();
-    private float commandVerifyExpireTime = 2;//2s
-    private ManualResetEvent manualResetEventVerify = new ManualResetEvent(true);
-    //private readonly object lockObject_command = new object();
-    private ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
+
+    int serialReadContentLsMark = -1;
+    readonly object lockObjectMovement = new object();
+    float commandVerifyExpireTime = 2;//2s
+    ManualResetEvent manualResetEventVerify = new ManualResetEvent(true);
+    //readonly object lockObject_command = new object();
+    ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
-    private List<string> Arduino_var_list =  "p_enter_reward_context, p_in_reward_context, p_lick_time_accu, p_lick_count, p_start_water, p_lick_mode, p_trial, p_lick_count_max, p_lick_mode0_delay, p_lick_mode1_delay".Replace(" ", "").Split(',').ToList();
-    private Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
+    List<string> Arduino_var_list =  "p_enter_reward_context, p_in_reward_context, p_lick_time_accu, p_lick_count, p_start_water, p_lick_mode, p_trial, p_lick_count_max, p_lick_mode0_delay, p_lick_mode1_delay".Replace(" ", "").Split(',').ToList();
+    Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     
     //--------------------------------------file writing-----------------------------------------------
-    private StreamWriter streamWriter;
-    private string filePath = "";
-    private Queue<string> writeQueue = new Queue<string>();
-    private const int BUFFER_SIZE = 256;
-    private const int BUFFER_THRESHOLD = 32;
-    private float[] time_rec_for_log = new float[2]{0, 0};
+    StreamWriter streamWriter;
+    string filePath = "";
+    Queue<string> writeQueue = new Queue<string>();
+    const int BUFFER_SIZE = 256;
+    const int BUFFER_THRESHOLD = 32;
+    float[] time_rec_for_log = new float[2]{0, 0};
 
-    private string[] ScanPorts_API(){
+    string[] ScanPorts_API(){
         string[] portList = SerialPort.GetPortNames();
         return portList;
     }
 
-    private void Command_parse(byte[] _command){//在主线程调用时内容不能有锁
+    void CommandParse(byte[] _command){//在主线程调用时内容不能有锁
         //"move", "context_info", "log"
         int startInd = -1;
         int temp_type = command_Converter.GetCommandType(_command, out startInd);
@@ -125,7 +131,7 @@ public class Moving : MonoBehaviour
         }
     }
 
-    private void DataReceived(){
+    void DataReceived(){
         while (true){
             manualResetEventVerify.WaitOne();
             if (sp!= null && sp.IsOpen){
@@ -157,7 +163,7 @@ public class Moving : MonoBehaviour
                         if(temp_complete_msg.Length>0){
                             if (command_Converter.GetCommandType(temp_complete_msg, out _)==0){
                                 //Debug.Log(string.Join(",", temp_complete_msg));
-                                Command_parse(temp_complete_msg);
+                                CommandParse(temp_complete_msg);
                             }
                             else{commandQueue.Enqueue(temp_complete_msg);}
                         }
@@ -223,11 +229,18 @@ public class Moving : MonoBehaviour
             return 1;
         }
         else{
-            return -1;
+            if(!DebugWithoutArduino){
+                Debug.LogError("port not open");
+                return -1;
+            }else{
+                return -3;
+            }
+            
         }
     }
     
     public int Context_verify(List<string> messages, List<int> values){
+        if(sp == null){return -3;}
         manualResetEventVerify.Reset();
         sp.ReadTimeout = 200;
         try{
@@ -290,7 +303,7 @@ public class Moving : MonoBehaviour
     }
 
 
-    private void InitializeStreamWriter(){
+    void InitializeStreamWriter(){
         try{
             #if UNITY_EDITOR
                 if(!Directory.Exists("Assets/Resources/Logs/")){Directory.CreateDirectory("Assets/Resources/Logs/");}
@@ -307,7 +320,7 @@ public class Moving : MonoBehaviour
         }
     }
 
-    private void ProcessWriteQueue(bool writeAll = false)//txt文件写入，位于主进程
+    void ProcessWriteQueue(bool writeAll = false)//txt文件写入，位于主进程
     {
         while (writeQueue.Count > 0 && streamWriter !=  null){
             string chunk = writeQueue.Peek();
@@ -321,7 +334,7 @@ public class Moving : MonoBehaviour
         }
     }
 
-    private void CleanupStreamWriter()
+    void CleanupStreamWriter()
     {
         if (streamWriter !=  null)
         {
@@ -331,7 +344,7 @@ public class Moving : MonoBehaviour
         }
     }
 
-    private string WriteInfo(string _rollingData = "/", bool write = true){
+    string WriteInfo(string _rollingData = "/", bool write = true){
         if(write){
             time_rec_for_log[1] = Time.fixedUnscaledTime;
             float[] temp_context_info=position_control.GetContextInfo();
@@ -384,7 +397,8 @@ public class Moving : MonoBehaviour
         for(int i = 0; i<Arduino_var_list.Count; i++){
             Arduino_var_map.Add(Arduino_var_list[i], i.ToString());
         }
-        Ini_reader iniReader = new Ini_reader(GetComponent<Context_generate>().GetConfigPath());
+
+        Ini_reader iniReader = new Ini_reader(context_Generate.GetConfigPath());
 
         List<string> portBlackList = new List<string>();
         foreach(string com in iniReader.ReadIniContent("serialSettings", "blackList", "").Split(",")){
@@ -443,7 +457,11 @@ public class Moving : MonoBehaviour
             writeQueue.Enqueue(data_write);
         }else{
             MessageBoxForUnity.Ensure("No Connection to Arduino!", "Serial Error");
-            Quit();
+            if(MessageBoxForUnity.YesOrNo("Continue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+                DebugWithoutArduino = true;
+            }else{
+                Quit();
+            }
         }
     }
 
@@ -509,7 +527,10 @@ public class Moving : MonoBehaviour
             }
         }if(sensorSmooth>= 0){sensorSmooth-= 1;}
 
-        if(Input.GetKey(KeyCode.LeftControl) && forward>0){m_rb.velocity = forward * scaleFactor * m_rb.transform.forward;}
+        // Debug.Log("lc: "+Input.GetKey(KeyCode.LeftControl) + "; forward: "+forward);
+        if((Input.GetKey(KeyCode.RightControl) || Input.GetKey(KeyCode.LeftControl)) && forward>0){
+            m_rb.velocity = forward * scaleFactor * m_rb.transform.forward;
+        }
         else{
             m_rb.velocity = forward!= 0? (forward > maxSpeed? maxSpeed: forward) * scaleFactor * m_rb.transform.forward: m_rb.velocity;//后面继续改这部分
         }
@@ -521,7 +542,7 @@ public class Moving : MonoBehaviour
 
         while(commandQueue.Count()>0){//重新发送之前未能同步成功的内容
             commandQueue.TryDequeue(out byte[] _command);
-            Command_parse(_command);
+            CommandParse(_command);
         }
         if(commandVerifyDict.Count>0){
             List<float> temp_keys = commandVerifyDict.Keys.ToList();
@@ -548,11 +569,7 @@ public class Moving : MonoBehaviour
             }
             catch{}
             finally{
-                #if UNITY_EDITOR
-                    UnityEditor.EditorApplication.isPlaying = false;
-                #else
-                    Application.Quit();
-                #endif
+                Quit();
             }
         }
     }
